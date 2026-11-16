@@ -37,31 +37,35 @@ export function createAnimator({ scene, sceneObjects, lights, water }) {
   const clock = new THREE.Clock();
   let elapsedTime = 0;
 
-  // LIVE-DEMO TIP: Change rotationSpeed (e.g. 0.85 -> 0.25) to slow down the beacon
+  // Store the baseline intensities configured in src/lights.js so editing
+  // src/lights.js or dragging GUI sliders always takes effect immediately!
   const state = {
     beaconRotationSpeed: 0.85, // radians per second
     beaconAngle: 0.0,
     isNightTarget: false,
     nightTransitionProgress: 0.0, // 0 = Golden Dusk, 1 = Starry Night (eased)
+    isTransitioningDayNight: false,
     lanternBoost: false,
+    lanternFlickerEnabled: true,
+    baseDockIntensity: lights.dockPointLight.intensity,
   };
 
-  // Dusk vs Night palette presets for eased atmospheric transition
+  // Capture initial Dusk settings directly from src/lights.js
   const palettes = {
     dusk: {
-      bg: new THREE.Color('#162447'),
-      sunColor: new THREE.Color('#ff9e5e'),
-      sunIntensity: 2.4,
-      hemiIntensity: 0.65,
+      bg: scene.background.clone(),
+      sunColor: lights.sunLight.color.clone(),
+      sunIntensity: lights.sunLight.intensity,
+      hemiIntensity: lights.hemisphereLight.intensity,
       envIntensity: 0.85,
-      deepWater: new THREE.Color('#092540'),
-      surfaceWater: new THREE.Color('#137a8b'),
+      deepWater: water.uniforms.uDeepColor.value.clone(),
+      surfaceWater: water.uniforms.uSurfaceColor.value.clone(),
     },
     night: {
       bg: new THREE.Color('#050814'),
       sunColor: new THREE.Color('#60a5fa'),
-      sunIntensity: 0.45,
-      hemiIntensity: 0.2,
+      sunIntensity: 0.35,
+      hemiIntensity: 0.18,
       envIntensity: 0.22,
       deepWater: new THREE.Color('#030d1a'),
       surfaceWater: new THREE.Color('#0b4f6c'),
@@ -97,13 +101,16 @@ export function createAnimator({ scene, sceneObjects, lights, water }) {
    */
   function toggleDayNightMode() {
     state.isNightTarget = !state.isNightTarget;
+    state.isTransitioningDayNight = true;
   }
 
   /**
-   * Toggles the dock PointLight lantern boost.
+   * Toggles the dock PointLight lantern boost when clicked in the 3D scene.
    */
   function toggleLanternBoost() {
     state.lanternBoost = !state.lanternBoost;
+    state.baseDockIntensity = state.lanternBoost ? 12.0 : 5.5;
+    lights.dockPointLight.intensity = state.baseDockIntensity;
   }
 
   /**
@@ -130,48 +137,78 @@ export function createAnimator({ scene, sceneObjects, lights, water }) {
     lights.beaconTarget.position.z = Math.sin(state.beaconAngle) * targetRadius;
     sceneObjects.beamPivot.rotation.y = -state.beaconAngle + Math.PI / 2;
 
+    // Keep volumetric beam cone opacity & lantern glass glow proportional to SpotLight intensity
+    const beaconRatio = THREE.MathUtils.clamp(lights.beaconSpotLight.intensity / 18.0, 0.0, 2.0);
+    sceneObjects.beamConeMat.opacity = 0.13 * beaconRatio;
+    sceneObjects.lanternGlassMat.emissiveIntensity = 0.9 * beaconRatio;
+
     // 3. Eased Dusk <-> Night Atmosphere Transition (using easeInOutCubic)
-    const transitionSpeed = 0.75; // full transition in ~1.33 seconds
-    if (state.isNightTarget && state.nightTransitionProgress < 1.0) {
-      state.nightTransitionProgress = Math.min(1.0, state.nightTransitionProgress + dt * transitionSpeed);
-    } else if (!state.isNightTarget && state.nightTransitionProgress > 0.0) {
-      state.nightTransitionProgress = Math.max(0.0, state.nightTransitionProgress - dt * transitionSpeed);
+    // Only overrides light intensities while actively transitioning, so manual GUI
+    // slider edits and src/lights.js changes are never overwritten!
+    if (state.isTransitioningDayNight) {
+      const transitionSpeed = 0.75; // full transition in ~1.33 seconds
+      if (state.isNightTarget && state.nightTransitionProgress < 1.0) {
+        state.nightTransitionProgress = Math.min(
+          1.0,
+          state.nightTransitionProgress + dt * transitionSpeed
+        );
+      } else if (!state.isNightTarget && state.nightTransitionProgress > 0.0) {
+        state.nightTransitionProgress = Math.max(
+          0.0,
+          state.nightTransitionProgress - dt * transitionSpeed
+        );
+      } else {
+        state.isTransitioningDayNight = false;
+      }
+
+      const easedNight = easeInOutCubic(state.nightTransitionProgress);
+      scene.background.lerpColors(palettes.dusk.bg, palettes.night.bg, easedNight);
+      scene.fog.color.copy(scene.background);
+      lights.sunLight.color.lerpColors(palettes.dusk.sunColor, palettes.night.sunColor, easedNight);
+      lights.sunLight.intensity = THREE.MathUtils.lerp(
+        palettes.dusk.sunIntensity,
+        palettes.night.sunIntensity,
+        easedNight
+      );
+      lights.hemisphereLight.intensity = THREE.MathUtils.lerp(
+        palettes.dusk.hemiIntensity,
+        palettes.night.hemiIntensity,
+        easedNight
+      );
+      scene.environmentIntensity = THREE.MathUtils.lerp(
+        palettes.dusk.envIntensity,
+        palettes.night.envIntensity,
+        easedNight
+      );
+      water.uniforms.uDeepColor.value.lerpColors(
+        palettes.dusk.deepWater,
+        palettes.night.deepWater,
+        easedNight
+      );
+      water.uniforms.uSurfaceColor.value.lerpColors(
+        palettes.dusk.surfaceWater,
+        palettes.night.surfaceWater,
+        easedNight
+      );
     }
 
-    const easedNight = easeInOutCubic(state.nightTransitionProgress);
-    scene.background.lerpColors(palettes.dusk.bg, palettes.night.bg, easedNight);
-    scene.fog.color.copy(scene.background);
-    lights.sunLight.color.lerpColors(palettes.dusk.sunColor, palettes.night.sunColor, easedNight);
-    lights.sunLight.intensity = THREE.MathUtils.lerp(
-      palettes.dusk.sunIntensity,
-      palettes.night.sunIntensity,
-      easedNight
-    );
-    lights.hemisphereLight.intensity = THREE.MathUtils.lerp(
-      palettes.dusk.hemiIntensity,
-      palettes.night.hemiIntensity,
-      easedNight
-    );
-    scene.environmentIntensity = THREE.MathUtils.lerp(
-      palettes.dusk.envIntensity,
-      palettes.night.envIntensity,
-      easedNight
-    );
-    water.uniforms.uDeepColor.value.lerpColors(
-      palettes.dusk.deepWater,
-      palettes.night.deepWater,
-      easedNight
-    );
-    water.uniforms.uSurfaceColor.value.lerpColors(
-      palettes.dusk.surfaceWater,
-      palettes.night.surfaceWater,
-      easedNight
-    );
+    // 4. Dock Lantern warm flicker around state.baseDockIntensity
+    if (state.lanternFlickerEnabled && state.baseDockIntensity > 0.01) {
+      const flicker = Math.sin(elapsedTime * 7.0) * 0.25 + Math.cos(elapsedTime * 13.0) * 0.15;
+      lights.dockPointLight.intensity = Math.max(0.0, state.baseDockIntensity + flicker);
+    } else {
+      lights.dockPointLight.intensity = state.baseDockIntensity;
+    }
 
-    // 4. Dock Lantern warm flicker + optional click boost
-    const baseLantern = state.lanternBoost ? 12.0 : 5.5;
-    const flicker = Math.sin(elapsedTime * 7.0) * 0.35 + Math.cos(elapsedTime * 13.0) * 0.2;
-    lights.dockPointLight.intensity = baseLantern + flicker;
+    // Keep dock lantern bulb emissive glow synced with PointLight intensity
+    const bulbMat = sceneObjects.lanternPostGroup.userData.bulbMat;
+    if (bulbMat) {
+      bulbMat.emissiveIntensity = THREE.MathUtils.clamp(
+        lights.dockPointLight.intensity * 0.4,
+        0.0,
+        4.0
+      );
+    }
 
     // 5. Animate the 3 PBR Buoys (gentle wave bobbing + eased jump when clicked)
     for (const buoy of sceneObjects.buoys) {
@@ -209,6 +246,7 @@ export function createAnimator({ scene, sceneObjects, lights, water }) {
 
   return {
     state,
+    palettes,
     update,
     triggerObjectBounce,
     toggleDayNightMode,
