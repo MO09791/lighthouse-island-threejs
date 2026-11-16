@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lighthouse Island — Three.js Final Project</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <canvas id="webgl-canvas"></canvas>
+
+    <!-- On-screen UI & Controls Hint (Criterion A4: Intuitive controls with on-screen hint) -->
+    <div id="hud" aria-live="polite">
+      <div class="hud-header">
+        <span class="badge">CG 2026/27</span>
+        <h1>Beacon Cove Lighthouse</h1>
+      </div>
+      <p class="hud-subtitle">
+        Interactive 3D Scene · Lighting, sRGB/ACES Colour, Textures, PBR + PMREM, Custom GLSL Water Shader, Eased Delta Animation &amp; Raycaster Picking
+      </p>
+      <div class="controls-grid">
+        <div><strong>Left Drag:</strong> Orbit Camera</div>
+        <div><strong>Right Drag:</strong> Pan Camera</div>
+        <div><strong>Scroll:</strong> Zoom In / Out</div>
+        <div><strong>Hover:</strong> Highlight Interactive Objects</div>
+        <div><strong>Click Buoy / Boat:</strong> Eased Bounce + Wave Pulse</div>
+        <div><strong>Click Lighthouse:</strong> Ease Dusk ⇄ Night Mode</div>
+      </div>
+      <div id="interaction-status" class="status-pill">
+        Hover or click the <strong>Lighthouse</strong>, <strong>3 PBR Buoys</strong>, <strong>Sailboat</strong>, or <strong>Dock Lantern</strong>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
