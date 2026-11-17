@@ -2,7 +2,7 @@
 
 **Course:** Computer Graphics 2026/27 · Final Project  
 **University:** South East European University (SEEU), Faculty of Contemporary Sciences and Technologies  
-**Professor:** Prof. Dr. Visar Shehu · **Teaching Assistant:** Bejda Maksuti  
+**Professor:** Prof. Dr. Visar Shehu  
 
 ---
 
